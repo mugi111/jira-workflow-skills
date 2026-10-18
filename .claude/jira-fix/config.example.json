@@ -1,0 +1,24 @@
+{
+  "baseBranch": "develop",
+  "jira": {
+    "reviewStatus": "In Review",
+    "maxComments": 5,
+    "acceptanceCriteriaField": null
+  },
+  "validation": {
+    "commands": [
+      {
+        "name": "unittest",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"],
+        "timeoutSeconds": 900
+      }
+    ]
+  },
+  "review": {
+    "policy": "review/policy.md",
+    "rules": {
+      "apis/**/*.py": "review/rules/backend.md",
+      "frontend/**/*.tsx": "review/rules/frontend.md"
+    }
+  }
+}
