@@ -39,7 +39,7 @@ class GitHubClient:
         if selected_path is not None:
             selected = next((item for item in found if item["path"] == selected_path), None)
             if selected is None:
-                fail("PR_TEMPLATE_NOT_FOUND", f"選択されたPRテンプレートが見つかりません: {selected_path}")
+                fail("PR_TEMPLATE_NOT_FOUND", f"Selected pull request template was not found: {selected_path}")
             return {"found": True, "selected": selected}
         summaries = [{"path": item["path"], "headings": re.findall(r"^#{1,6}\s+.+$", item["content"], re.MULTILINE),
                       "characterCount": len(item["content"])} for item in found]
@@ -58,12 +58,12 @@ class GitHubClient:
         branch = branch_result.stdout.strip()
         existing = self.existing_pr(branch)
         if existing:
-            fail("PR_ALREADY_EXISTS", f"現在のブランチには既存PRがあります。既存PRを再利用せず、専用の新規ブランチを使用してください: {existing.get('url', '')}")
+            fail("PR_ALREADY_EXISTS", f"An open pull request already exists for this branch. Use a dedicated new branch instead: {existing.get('url', '')}")
         if not title_file.is_file() or not body_file.is_file():
-            fail("PR_CONTENT_MISSING", "PRタイトルまたは本文ファイルがありません")
+            fail("PR_CONTENT_MISSING", "Pull request title or body file is missing")
         title = title_file.read_text(encoding="utf-8").strip()
         if not title:
-            fail("PR_TITLE_EMPTY", "PRタイトルが空です")
+            fail("PR_TITLE_EMPTY", "Pull request title is empty")
         result = run_checked(self.runner, ["gh", "pr", "create", "--base", base, "--head", branch,
                                            "--title", title, "--body-file", str(body_file)], cwd=self.cwd, timeout=120)
         url = result.stdout.strip().splitlines()[-1]
@@ -73,7 +73,7 @@ class GitHubClient:
         if branch is None:
             branch = run_checked(self.runner, ["git", "branch", "--show-current"], cwd=self.cwd).stdout.strip()
             if not branch:
-                fail("DETACHED_HEAD", "現在のブランチを特定できないためPR状態を確認できません")
+                fail("DETACHED_HEAD", "Cannot check pull request status because the current branch cannot be determined")
         pr = self.existing_pr(branch)
         if pr is None:
             return {"exists": False, "state": None}
@@ -85,7 +85,7 @@ class GitHubClient:
 
     def status_for_url(self, url: str) -> dict[str, Any]:
         if not url.startswith(("https://github.com/", "https://")):
-            fail("INVALID_PR_URL", "PR URLの形式が不正です")
+            fail("INVALID_PR_URL", "Invalid pull request URL")
         result = run_checked(self.runner, ["gh", "pr", "view", url, "--json",
                                            "number,url,title,state,isDraft,headRefName,baseRefName"], cwd=self.cwd)
         data = json.loads(result.stdout)

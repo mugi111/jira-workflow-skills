@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from common import (SubprocessRunner, WorkflowError, command_available, emit, fail,
-                    find_repo_root, load_config, run_checked)
+                    find_repo_root, load_config, run_checked, save_checkpoint, load_checkpoint)
 from git import GitClient
 from github import GitHubClient
 from jira import JiraClient, validate_key
@@ -38,17 +38,22 @@ def parser() -> argparse.ArgumentParser:
     git_cmd = commands.add_parser("git").add_subparsers(dest="action", required=True)
     git_cmd.add_parser("inspect")
     branch = git_cmd.add_parser("branch").add_subparsers(dest="branch_action", required=True)
-    create = branch.add_parser("create"); create.add_argument("name"); create.add_argument("--base", required=True)
-    diff = git_cmd.add_parser("diff"); diff.add_argument("--base", required=True)
+    create = branch.add_parser("create"); create.add_argument("name"); create.add_argument("--base")
+    diff = git_cmd.add_parser("diff"); diff.add_argument("--base")
     stage = git_cmd.add_parser("stage"); stage.add_argument("--files-file", required=True)
     commit = git_cmd.add_parser("commit"); commit.add_argument("--message-file", required=True); commit.add_argument("--files-file", required=True)
     git_cmd.add_parser("push")
     commands.add_parser("validate")
+    checkpoint = commands.add_parser("checkpoint")
+    checkpoint.add_argument("key")
+    checkpoint.add_argument("--phase")
+    checkpoint.add_argument("--summary")
+    checkpoint.add_argument("--next", default="")
     review = commands.add_parser("review").add_subparsers(dest="action", required=True)
-    context = review.add_parser("context"); context.add_argument("--base", required=True)
+    context = review.add_parser("context"); context.add_argument("--base")
     pr = commands.add_parser("pr").add_subparsers(dest="action", required=True)
     template = pr.add_parser("template"); template.add_argument("--path")
-    create_pr = pr.add_parser("create"); create_pr.add_argument("--base", required=True); create_pr.add_argument("--title-file", required=True); create_pr.add_argument("--body-file", required=True)
+    create_pr = pr.add_parser("create"); create_pr.add_argument("--base"); create_pr.add_argument("--title-file", required=True); create_pr.add_argument("--body-file", required=True)
     pr.add_parser("status")
     return root
 
@@ -72,7 +77,7 @@ def execute(args: argparse.Namespace) -> object:
         git_state = GitClient(runner, root).inspect()
         data = {"commands": required, "authentication": auth, "repository": git_state}
         if not all(required.values()) or not all(auth.values()):
-            fail("PREPARATION_FAILED", "必要なCLIまたは認証状態に問題があります")
+            fail("PREPARATION_FAILED", "A required CLI or authentication check failed")
         return data
     if args.command == "issue":
         jira = JiraClient(runner, root)
@@ -85,35 +90,57 @@ def execute(args: argparse.Namespace) -> object:
     if args.command == "git":
         git = GitClient(runner, root)
         if args.action == "inspect": return git.inspect()
-        if args.action == "branch": return git.create_branch(args.name, args.base)
-        if args.action == "diff": return git.diff(args.base)
+        if args.action == "branch": return git.create_branch(args.name, _resolve_base_branch(args.base, config, runner, root))
+        if args.action == "diff": return git.diff(_resolve_base_branch(args.base, config, runner, root))
         if args.action == "push": git.push(); return {"pushed": True}
         files = Path(args.files_file).read_text(encoding="utf-8").splitlines()
-        if args.action == "stage": return git.stage(files)
+        if args.action == "stage": return git.stage(files, config.get("filters", {}))
         message = Path(args.message_file).read_text(encoding="utf-8")
         return {"commit": git.commit(message, files)}
     if args.command == "validate": return run_validation(config, root)
-    if args.command == "review": return collect_review_context(root, args.base, config, runner)
+    if args.command == "checkpoint":
+        if args.phase is None:
+            return {"checkpoint": load_checkpoint(args.key)}
+        if not args.summary:
+            fail("INVALID_ARGUMENTS", "--summary is required when saving a checkpoint")
+        return save_checkpoint(args.key, args.phase, args.summary, args.next)
+    if args.command == "review": return collect_review_context(root, _resolve_base_branch(args.base, config, runner, root), config, runner)
     if args.command == "pr":
         gh = GitHubClient(runner, root)
         if args.action == "template": return gh.template(args.path)
         if args.action == "status": return gh.status()
-        return gh.create_pr(args.base, Path(args.title_file), Path(args.body_file))
-    fail("UNKNOWN_COMMAND", "不明なコマンドです")
+        return gh.create_pr(_resolve_base_branch(args.base, config, runner, root), Path(args.title_file), Path(args.body_file))
+    fail("UNKNOWN_COMMAND", "Unknown command")
+
+
+def _resolve_base_branch(requested: str | None, config: dict, runner: SubprocessRunner, root: Path) -> str:
+    configured = config.get("baseBranch")
+    if configured:
+        return configured
+    if requested:
+        return requested
+    result = run_checked(runner, ["gh", "repo", "view", "--json", "defaultBranchRef"], cwd=root)
+    import json
+    try:
+        branch = json.loads(result.stdout).get("defaultBranchRef", {}).get("name")
+    except (json.JSONDecodeError, AttributeError):
+        branch = None
+    if not isinstance(branch, str) or not branch.strip():
+        fail("BASE_BRANCH_UNAVAILABLE", "Could not determine the repository default branch from GitHub")
+    return branch
 
 
 def _complete_issue(key: str, pr_url: str, jira: JiraClient, config: dict, github: GitHubClient) -> object:
     validate_key(key)
     status = github.status_for_url(pr_url)
     if status.get("url") != pr_url or str(status.get("state", "")).casefold() != "open" or status.get("isDraft"):
-        fail("PR_NOT_VERIFIED", "指定されたPRがレビュー可能な状態であることを確認できません")
-    jira.add_comment(key, f"修正PRを作成しました。\n{pr_url}")
+        fail("PR_NOT_VERIFIED", "The specified pull request is not verified as open and ready for review")
     target = config.get("jira", {}).get("reviewStatus", "In Review")
     current = jira.get_status(key)
     if current.casefold() != target.casefold(): jira.transition(key, target)
     verified = jira.get_status(key)
     if verified.casefold() != target.casefold():
-        fail("JIRA_TRANSITION_UNVERIFIED", f"Jiraステータスが{target}へ遷移したことを確認できません（現在: {verified}）")
+        fail("JIRA_TRANSITION_UNVERIFIED", f"Could not verify Jira transitioned to {target} (current status: {verified})")
     return {"key": key, "prUrl": pr_url, "status": verified, "completed": True}
 
 

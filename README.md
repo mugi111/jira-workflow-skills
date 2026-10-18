@@ -1,6 +1,6 @@
 # jira-fix
 
-`jira-fix` is a Claude Code Skill that guides one Jira issue through focused implementation, configured validation, code review, a GitHub pull request, and a verified Jira transition to **In Review**. Deterministic operations are handled by Python 3 scripts; semantic decisions remain with Claude Code.
+`jira-fix` is a Claude Code Skill that guides one Jira issue through focused implementation, configured validation, code review, a GitHub pull request, and a verified Jira transition to **In Review**. It does not add Jira comments. Deterministic operations are handled by Python 3 scripts; semantic decisions remain with Claude Code.
 
 > This repository is under initial development. The Jira CLI and GitHub CLI adapters rely on their installed command-line tools and should be exercised against a sandbox Jira/GitHub project before production use.
 
@@ -32,7 +32,7 @@ The repository is also usable locally by linking/copying `skills/jira-fix` into 
 
 ## Configure a project
 
-Copy `.claude/jira-fix/config.example.json` from this repository into the target project's `.claude/jira-fix/config.json`, then adjust it. Configure `baseBranch` explicitly; the Skill will not silently use GitHub's default branch. Jira and review settings are optional. Validation commands are required: `validate` fails closed when none are configured, so configure the project's required checks before running the workflow.
+Copy `.claude/jira-fix/config.example.json` from this repository into the target project's `.claude/jira-fix/config.json`, then adjust it. `baseBranch` is optional: when omitted, the Skill uses the repository's GitHub default branch. An explicit configured value takes precedence. Jira and review settings are optional. Validation commands are required: `validate` fails closed when none are configured, so configure the project's required checks before running the workflow.
 
 ```json
 {
@@ -47,6 +47,10 @@ Copy `.claude/jira-fix/config.example.json` from this repository into the target
       {"name": "unit", "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"], "timeoutSeconds": 900}
     ]
   },
+  "filters": {
+    "excludePaths": [".env*", "secrets/**", "**/credentials.json"],
+    "secretPatterns": []
+  },
   "review": {
     "policy": "review/policy.md",
     "rules": {"apis/**/*.py": "review/rules/backend.md"}
@@ -54,7 +58,7 @@ Copy `.claude/jira-fix/config.example.json` from this repository into the target
 }
 ```
 
-Review paths are relative to `.claude/jira-fix/`. Review rules are selected by matching changed file paths. Add `CLAUDE.md`, `.claude/rules/`, and a PR template to the target project as needed. Each new correction uses a dedicated branch and creates a new PR; an existing branch or open PR is not reused.
+Review paths are relative to `.claude/jira-fix/`. Review rules are selected by matching changed file paths. The configured `baseBranch` takes precedence; otherwise GitHub's default branch is used. `git branch create` fetches that base from `origin` and starts the new branch at `origin/<baseBranch>`; it stops if fetch fails or the remote branch is missing. Before staging, the CLI blocks common credential file names, configured `filters.excludePaths` globs, and content matching built-in or configured `filters.secretPatterns`. A match stops staging and reports the file/pattern for manual review; it never removes or edits files. Add `CLAUDE.md`, `.claude/rules/`, and a PR template to the target project as needed. Each new correction uses a dedicated branch and creates a new PR; an existing branch or open PR is not reused.
 
 ## Usage
 
@@ -62,7 +66,7 @@ Review paths are relative to `.claude/jira-fix/`. Review rules are selected by m
 /jira-fix PROJ-123
 ```
 
-Additional constraints may follow the issue key. Before implementation, the Skill checks that the Jira issue describes enough expected behavior to proceed; if requirements are missing, it asks the user and waits. It then maps the affected code, consumers, boundaries, and regression risks, identifying the target project's language/framework versions before implementing as a specialist in that stack. It runs configured validation, reviews the diff, commits only explicitly selected files, pushes, creates a new PR for the correction, and then comments on and transitions the Jira issue. It reports completion only after verifying the PR and final Jira status.
+Additional constraints may follow the issue key. Before implementation, the Skill checks that the Jira issue describes enough expected behavior to proceed; if requirements are missing, it asks the user and waits. It then maps the affected code, consumers, boundaries, and regression risks, identifying the target project's language/framework versions before implementing as a specialist in that stack. It runs configured validation, reviews the diff, commits only explicitly selected files, pushes, creates a new PR for the correction, and transitions the Jira issue without adding a comment. It reports completion only after verifying the PR and final Jira status.
 
 Direct script invocation (from the target repository):
 
@@ -75,6 +79,8 @@ python3 /path/to/skills/jira-fix/scripts/cli.py git inspect
 For manual commits, first run `git stage --files-file <path>` and inspect the returned staged diff; then run `git commit --message-file <path> --files-file <path>`.
 
 Every command prints a single JSON envelope to stdout. Full validation output is stored under the operating system's temporary directory in `jira-fix/<issue-key>/`; inspect `details_path` on failure. No Jira text or credentials are used as executable commands.
+
+Validation output contains a compact per-check summary and a short redacted excerpt for failures; full logs remain in `detailsPath`. Workflow checkpoints can be saved with `checkpoint PROJ-123 --phase analysis --summary "..." --next "..."` and read with `checkpoint PROJ-123`. Checkpoints contain brief verified facts only and must be revalidated before resuming.
 
 ## Development
 

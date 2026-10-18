@@ -12,7 +12,7 @@ ISSUE_KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 
 def validate_key(key: str) -> str:
     if not ISSUE_KEY.fullmatch(key):
-        fail("INVALID_ISSUE_KEY", f"Jira課題キーの形式が不正です: {key}")
+        fail("INVALID_ISSUE_KEY", f"Invalid Jira issue key: {key}")
     return key
 
 
@@ -62,9 +62,9 @@ def _text(value: Any) -> str:
 def normalize_issue(raw: dict[str, Any], key: str, acceptance_field: str | None = None) -> dict[str, Any]:
     fields = raw.get("fields", raw)
     if not isinstance(fields, dict):
-        fail("INVALID_JIRA_RESPONSE", "Jira課題レスポンスのfieldsが不正です")
+        fail("INVALID_JIRA_RESPONSE", "Jira issue response has invalid fields")
     if acceptance_field and acceptance_field not in fields:
-        fail("ACCEPTANCE_CRITERIA_MISSING", f"設定された受け入れ条件フィールドを取得できません: {acceptance_field}")
+        fail("ACCEPTANCE_CRITERIA_MISSING", f"Configured acceptance criteria field is missing: {acceptance_field}")
     ac = fields.get(acceptance_field) if acceptance_field else None
     if ac is None:
         ac = fields.get("acceptanceCriteria") or fields.get("acceptance_criteria")
@@ -99,7 +99,7 @@ class JiraClient:
         raw = parse_json_output(raw_result.stdout, "jira issue view")
         issue = normalize_issue(raw, key, acceptance_field)
         if not issue["summary"]:
-            fail("INVALID_JIRA_RESPONSE", "Jiraレスポンスにsummaryがありません")
+            fail("INVALID_JIRA_RESPONSE", "Jira response does not contain a summary")
         return issue
 
     def get_comments(self, key: str, limit: int = 5) -> list[dict[str, str]]:
@@ -111,22 +111,15 @@ class JiraClient:
         fields = parsed.get("fields", parsed) if isinstance(parsed, dict) else None
         comment_field = fields.get("comment") if isinstance(fields, dict) else None
         if not isinstance(comment_field, dict) or not isinstance(comment_field.get("comments"), list):
-            fail("JIRA_COMMENTS_UNAVAILABLE", "Jiraレスポンスからコメント一覧を確認できません。重複コメント防止のため処理を停止しました")
+            fail("JIRA_COMMENTS_UNAVAILABLE", "Could not read Jira comments; stopped to prevent a duplicate comment")
         items = comment_field["comments"]
         if any(not isinstance(item, dict) for item in items):
-            fail("JIRA_COMMENTS_INVALID", "Jiraコメント一覧の形式が不正です。重複コメント防止のため処理を停止しました")
+            fail("JIRA_COMMENTS_INVALID", "Jira comments have an invalid format; stopped to prevent a duplicate comment")
         return [{"author": _text(x.get("author")), "body": _text(x.get("body")), "created": _text(x.get("created"))}
                 for x in items[:limit]]
 
     def get_status(self, key: str) -> str:
         return self.get_issue(key)["status"]
-
-    def add_comment(self, key: str, body: str) -> None:
-        validate_key(key)
-        existing = self.get_comments(key, 50)
-        if any(body in item["body"] for item in existing):
-            return
-        run_checked(self.runner, ["jira", "issue", "comment", "add", key, body], cwd=self.cwd)
 
     def transition(self, key: str, status: str) -> None:
         validate_key(key)

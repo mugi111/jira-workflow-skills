@@ -21,7 +21,7 @@ def collect_review_context(root: Path, base: str, config: dict[str, Any], runner
         candidates.append(policy)
     rules = config.get("review", {}).get("rules", {})
     if not isinstance(rules, dict):
-        fail("INVALID_CONFIG", "review.rulesはglobとパスのオブジェクトで指定してください")
+        fail("INVALID_CONFIG", "review.rules must map glob patterns to paths")
     for pattern, path in rules.items():
         if any(fnmatch.fnmatchcase(file, pattern) for file in files):
             candidates.append(path)
@@ -29,7 +29,7 @@ def collect_review_context(root: Path, base: str, config: dict[str, Any], runner
     for relative in dict.fromkeys(candidates):
         path = (review_root / relative).resolve()
         if review_root.resolve() not in path.parents:
-            fail("INVALID_CONFIG", f"レビュー基準のパスが設定ディレクトリ外です: {relative}")
+            fail("INVALID_CONFIG", f"Review policy path is outside the configuration directory: {relative}")
         if path.is_file():
             policies.append(path.relative_to(root).as_posix())
     return {"changedFiles": files, "reviewPolicies": policies}
