@@ -1,8 +1,8 @@
 # jira-fix
 
-`jira-fix` is a Claude Code Skill that guides one Jira issue through focused implementation, configured validation, code review, a GitHub pull request, and a verified Jira transition to **In Review**. It does not add Jira comments. Deterministic operations are handled by Python 3 scripts; semantic decisions remain with Claude Code.
+English | [日本語](README.ja.md)
 
-> This repository is under initial development. The Jira CLI and GitHub CLI adapters rely on their installed command-line tools and should be exercised against a sandbox Jira/GitHub project before production use.
+`jira-fix` is a Claude Code skill for resolving one Jira issue. It implements the fix, runs configured checks, reviews the changes, creates a GitHub pull request, and moves the issue to In Review. It does not add Jira comments. Python 3 scripts run the commands; Claude Code interprets requirements and decides what to change.
 
 ## Prerequisites
 
@@ -28,11 +28,13 @@ Omit `-g` for a project-local installation:
 npx skills add mugi111/jira-workflow-skills --skill jira-fix -a claude-code
 ```
 
-The repository is also usable locally by linking/copying `skills/jira-fix` into the appropriate Claude Code skills directory.
+You can also link or copy `skills/jira-fix` into your Claude Code skills directory.
 
 ## Configure a project
 
-Copy `.claude/jira-fix/config.example.json` from this repository into the target project's `.claude/jira-fix/config.json`, then adjust it. `baseBranch` is optional: when omitted, the Skill uses the repository's GitHub default branch. An explicit configured value takes precedence. Jira and review settings are optional. Validation commands are required: `validate` fails closed when none are configured, so configure the project's required checks before running the workflow.
+Copy `.claude/jira-fix/config.example.json` from this repository to the target project's `.claude/jira-fix/config.json` and edit it. Set `baseBranch` to override the repository's GitHub default branch. Jira and review settings are optional.
+
+Configure the project's required checks before running the workflow. If no validation commands are configured, `validate` fails and the workflow stops.
 
 ```json
 {
@@ -58,7 +60,13 @@ Copy `.claude/jira-fix/config.example.json` from this repository into the target
 }
 ```
 
-Review paths are relative to `.claude/jira-fix/`. Review rules are selected by matching changed file paths. The configured `baseBranch` takes precedence; otherwise GitHub's default branch is used. `git branch create` fetches that base from `origin` and starts the new branch at `origin/<baseBranch>`; it stops if fetch fails or the remote branch is missing. Before staging, the CLI blocks common credential file names, configured `filters.excludePaths` globs, and content matching built-in or configured `filters.secretPatterns`. A match stops staging and reports the file/pattern for manual review; it never removes or edits files. Add `CLAUDE.md`, `.claude/rules/`, and a PR template to the target project as needed. Each new correction uses a dedicated branch and creates a new PR; an existing branch or open PR is not reused.
+Review paths are relative to `.claude/jira-fix/`. The CLI selects review rules that match the changed file paths.
+
+`git branch create` fetches the base branch from `origin` and starts a new branch at `origin/<baseBranch>`. It stops if the fetch fails or the remote branch is missing.
+
+Before staging, the CLI checks for common credential file names, `filters.excludePaths` globs, and content matching built-in patterns or `filters.secretPatterns`. A match stops staging and reports the file and pattern for you to review. The CLI never removes or edits files in response to a match.
+
+Add `CLAUDE.md`, `.claude/rules/`, and a PR template to the target project as needed. Each fix gets a dedicated branch and a new PR. The workflow does not reuse existing branches or open PRs.
 
 ## Usage
 
@@ -66,7 +74,11 @@ Review paths are relative to `.claude/jira-fix/`. Review rules are selected by m
 /jira-fix PROJ-123
 ```
 
-Additional constraints may follow the issue key. Before implementation, the Skill checks that the Jira issue describes enough expected behavior to proceed; if requirements are missing, it asks the user and waits. It then maps the affected code, consumers, boundaries, and regression risks, identifying the target project's language/framework versions before implementing as a specialist in that stack. It runs configured validation, reviews the diff, commits only explicitly selected files, pushes, creates a new PR for the correction, and transitions the Jira issue without adding a comment. It reports completion only after verifying the PR and final Jira status.
+Add any constraints after the issue key.
+
+Claude Code first checks whether the Jira issue describes the expected behavior well enough to implement. If requirements are missing, it asks you and waits for an answer. It then traces the affected code, callers, consumers, and boundaries to identify regression risks. It checks the project's language and framework versions before implementing the fix.
+
+After running the configured checks and reviewing the diff, it commits only explicitly selected files, pushes, creates a new PR, and transitions the Jira issue without adding a comment. It verifies the PR and final Jira status before reporting completion.
 
 Direct script invocation (from the target repository):
 
@@ -78,9 +90,9 @@ python3 /path/to/skills/jira-fix/scripts/cli.py git inspect
 
 For manual commits, first run `git stage --files-file <path>` and inspect the returned staged diff; then run `git commit --message-file <path> --files-file <path>`.
 
-Every command prints a single JSON envelope to stdout. Full validation output is stored under the operating system's temporary directory in `jira-fix/<issue-key>/`; inspect `details_path` on failure. No Jira text or credentials are used as executable commands.
+Each command prints one JSON object to stdout. Validation results include a summary for each check and a short failure excerpt with sensitive information redacted. Full output is saved in `jira-fix/<issue-key>/` under the operating system's temporary directory. Follow `details_path` in the command response or `detailsPath` in the validation result to read it. The scripts never execute Jira text or credentials as commands.
 
-Validation output contains a compact per-check summary and a short redacted excerpt for failures; full logs remain in `detailsPath`. Workflow checkpoints can be saved with `checkpoint PROJ-123 --phase analysis --summary "..." --next "..."` and read with `checkpoint PROJ-123`. Checkpoints contain brief verified facts only and must be revalidated before resuming.
+Save a checkpoint with `checkpoint PROJ-123 --phase analysis --summary "..." --next "..."` and read it with `checkpoint PROJ-123`. Record only brief, verified facts and recheck them before resuming.
 
 ## Development
 
