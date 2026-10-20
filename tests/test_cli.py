@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-fix" / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-work" / "scripts"))
 import cli
 from cli import main
 
@@ -31,7 +31,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         payload = json.loads(output.call_args.args[0])
         self.assertTrue(payload["success"])
-        self.assertIn("usage: jira-fix", payload["data"]["help"])
+        self.assertIn("usage: jira-work", payload["data"]["help"])
 
 
 if __name__ == "__main__": unittest.main()

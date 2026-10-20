@@ -1,4 +1,8 @@
 {
+  "routing": {
+    "investigateTypes": ["Epic", "Story"],
+    "fixTypes": ["Bug", "Task", "Sub-task"]
+  },
   "baseBranch": "develop",
   "jira": {
     "reviewStatus": "In Review",

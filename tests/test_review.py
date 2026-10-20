@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-fix" / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-work" / "scripts"))
 from review import collect_review_context
 
 
@@ -16,9 +16,9 @@ class Runner:
 class ReviewTests(unittest.TestCase):
     def test_selects_only_matching_rules_and_existing_policies(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp); (root / ".claude/jira-fix/review/rules").mkdir(parents=True)
-            (root / ".claude/jira-fix/review/policy.md").write_text("policy")
-            (root / ".claude/jira-fix/review/rules/backend.md").write_text("backend")
+            root = Path(tmp); (root / ".claude/jira-work/review/rules").mkdir(parents=True)
+            (root / ".claude/jira-work/review/policy.md").write_text("policy")
+            (root / ".claude/jira-work/review/rules/backend.md").write_text("backend")
             config = {"review": {"policy": "review/policy.md", "rules": {"apis/*.py": "review/rules/backend.md", "frontend/*.tsx": "review/rules/front.md"}}}
             result = collect_review_context(root, "main", config, Runner())
             self.assertEqual(result["changedFiles"], ["apis/auth.py", "README.md"])

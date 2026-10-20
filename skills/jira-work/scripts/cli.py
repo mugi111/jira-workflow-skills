@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single JSON-producing entry point for the jira-fix Skill."""
+"""Single JSON-producing entry point for the jira-work Skill."""
 from __future__ import annotations
 
 import argparse
@@ -28,11 +28,11 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 
 def parser() -> argparse.ArgumentParser:
-    root = JsonArgumentParser(prog="jira-fix")
+    root = JsonArgumentParser(prog="jira-work")
     commands = root.add_subparsers(dest="command", required=True, parser_class=JsonArgumentParser)
     commands.add_parser("check")
     issue = commands.add_parser("issue").add_subparsers(dest="action", required=True)
-    for action in ("get", "status"):
+    for action in ("get", "route", "status"):
         item = issue.add_parser(action); item.add_argument("key")
     complete = issue.add_parser("complete"); complete.add_argument("key"); complete.add_argument("--pr-url", required=True)
     git_cmd = commands.add_parser("git").add_subparsers(dest="action", required=True)
@@ -81,6 +81,16 @@ def execute(args: argparse.Namespace) -> object:
         return data
     if args.command == "issue":
         jira = JiraClient(runner, root)
+        if args.action == "route":
+            issue = jira.get_issue(args.key, config.get("jira", {}).get("acceptanceCriteriaField"))
+            routing = config.get("routing", {})
+            investigate_types = routing.get("investigateTypes", ["Epic", "Story"])
+            fix_types = routing.get("fixTypes", ["Bug", "Task", "Sub-task"])
+            issue_type = issue["issueType"]
+            investigate_match = issue_type.casefold() in {name.casefold() for name in investigate_types}
+            fix_match = issue_type.casefold() in {name.casefold() for name in fix_types}
+            route = "unmapped" if investigate_match == fix_match else ("investigate" if investigate_match else "fix")
+            return {"key": issue["key"], "issueType": issue_type, "route": route}
         if args.action == "get":
             issue = jira.get_issue(args.key, config.get("jira", {}).get("acceptanceCriteriaField"))
             issue["comments"] = jira.get_comments(args.key, config.get("jira", {}).get("maxComments", 5))

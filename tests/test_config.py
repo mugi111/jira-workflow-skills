@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-fix" / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-work" / "scripts"))
 from common import WorkflowError, _validate_config
 
 

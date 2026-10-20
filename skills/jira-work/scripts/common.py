@@ -71,7 +71,7 @@ def find_repo_root(start: Path | None = None, runner: CommandRunner | None = Non
 
 
 def load_config(root: Path) -> dict[str, Any]:
-    path = root / ".claude" / "jira-fix" / "config.json"
+    path = root / ".claude" / "jira-work" / "config.json"
     if not path.exists():
         return {}
     try:
@@ -87,6 +87,14 @@ def load_config(root: Path) -> dict[str, Any]:
 def _validate_config(config: Mapping[str, Any]) -> None:
     if "baseBranch" in config and not isinstance(config["baseBranch"], str):
         fail("INVALID_CONFIG", "baseBranch must be a string")
+    routing = config.get("routing")
+    if "routing" in config:
+        if not isinstance(routing, dict):
+            fail("INVALID_CONFIG", "routing must be an object")
+        for key in ("investigateTypes", "fixTypes"):
+            values = routing.get(key)
+            if not isinstance(values, list) or not all(isinstance(value, str) and value.strip() for value in values):
+                fail("INVALID_CONFIG", f"routing.{key} must be an array of non-empty strings")
     jira = config.get("jira", {})
     if not isinstance(jira, dict):
         fail("INVALID_CONFIG", "jira must be an object")
@@ -130,7 +138,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
 
 def work_dir(issue_key: str | None = None) -> Path:
     safe = "".join(c for c in (issue_key or "general") if c.isalnum() or c in "-_")
-    path = Path(tempfile.gettempdir()) / "jira-fix" / (safe or "general")
+    path = Path(tempfile.gettempdir()) / "jira-work" / (safe or "general")
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         path.chmod(0o700)

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-fix" / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-work" / "scripts"))
 from common import WorkflowError
 from github import GitHubClient
 

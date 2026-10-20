@@ -2,7 +2,7 @@ import unittest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-fix" / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "skills" / "jira-work" / "scripts"))
 from jira import normalize_issue, validate_key
 from common import WorkflowError
 from jira import JiraClient
